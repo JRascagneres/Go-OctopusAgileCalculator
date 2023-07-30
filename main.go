@@ -10,14 +10,16 @@ import (
 )
 
 func main() {
-	calcRuntimeCosts([]RuntimeCostInput{
-		{
-			Name:  "3D Print Squares",
-			Hours: 9,
-		},
-		{
-			Name:  "Washer + Dryer",
-			Hours: 4,
+	calcRuntimeCosts(RuntimeCostInput{
+		InputItems: []RuntimeCostInputItem{
+			{
+				Name:  "3D Print Squares",
+				Hours: 9,
+			},
+			{
+				Name:  "Washer + Dryer",
+				Hours: 4,
+			},
 		},
 	})
 
@@ -25,11 +27,15 @@ func main() {
 }
 
 type RuntimeCostInput struct {
+	InputItems []RuntimeCostInputItem
+}
+
+type RuntimeCostInputItem struct {
 	Name  string
 	Hours int
 }
 
-func calcRuntimeCosts(runtimeInputs []RuntimeCostInput) {
+func calcRuntimeCosts(runtimeInputs RuntimeCostInput) {
 	ratesResponse, err := getRates()
 	if err != nil {
 		fmt.Println(err)
@@ -39,13 +45,13 @@ func calcRuntimeCosts(runtimeInputs []RuntimeCostInput) {
 	future := filterToFutureOnly(ratesResponse.Results)
 	sortByDate(future)
 
-	for _, runtimeInput := range runtimeInputs {
-		lowestTime, lowestCost := calcRuntimeCost(future, runtimeInput.Hours)
-		fmt.Printf("Lowest cost for %s is %f at %s\n", runtimeInput.Name, lowestCost, lowestTime)
+	for _, runtimeInput := range runtimeInputs.InputItems {
+		lowestTime, lowestEndTime, lowestCost := calcRuntimeCost(future, runtimeInput.Hours)
+		fmt.Printf("%s: %s - %s: %.2fp\n", runtimeInput.Name, lowestTime.Format("15:04"), lowestEndTime.Format("15:04"), lowestCost)
 	}
 }
 
-func calcRuntimeCost(futureRates []Rate, runtimeHours int) (time.Time, float64) {
+func calcRuntimeCost(futureRates []Rate, runtimeHours int) (time.Time, time.Time, float64) {
 	runtimeSegments := runtimeHours * 2
 
 	lowestTime := futureRates[0].ValidFrom
@@ -65,7 +71,9 @@ func calcRuntimeCost(futureRates []Rate, runtimeHours int) (time.Time, float64) 
 		}
 	}
 
-	return lowestTime, lowestCost
+	lowestEndTime := lowestTime.Add(time.Duration(runtimeHours) * time.Minute * 30 * 2)
+
+	return lowestTime, lowestEndTime, lowestCost
 }
 
 type RatesResponse struct {
