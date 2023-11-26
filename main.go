@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"time"
@@ -13,12 +14,8 @@ func main() {
 	calcRuntimeCosts(RuntimeCostInput{
 		InputItems: []RuntimeCostInputItem{
 			{
-				Name:  "3D Print Squares",
-				Hours: 9,
-			},
-			{
-				Name:  "Washer + Dryer",
-				Hours: 4,
+				Name:  "Battery charge",
+				Hours: 1.5,
 			},
 		},
 	})
@@ -32,7 +29,7 @@ type RuntimeCostInput struct {
 
 type RuntimeCostInputItem struct {
 	Name  string
-	Hours int
+	Hours float64
 }
 
 func calcRuntimeCosts(runtimeInputs RuntimeCostInput) {
@@ -47,15 +44,24 @@ func calcRuntimeCosts(runtimeInputs RuntimeCostInput) {
 
 	for _, runtimeInput := range runtimeInputs.InputItems {
 		lowestTime, lowestEndTime, lowestCost := calcRuntimeCost(future, runtimeInput.Hours)
-		fmt.Printf("%s: %s - %s: %.2fp\n", runtimeInput.Name, lowestTime.Format("15:04"), lowestEndTime.Format("15:04"), lowestCost)
+		fmt.Printf("%s: %s - %s: %.2fp\n", runtimeInput.Name, timeInFormat(lowestTime), timeInFormat(lowestEndTime), lowestCost)
 	}
 }
 
-func calcRuntimeCost(futureRates []Rate, runtimeHours int) (time.Time, time.Time, float64) {
-	runtimeSegments := runtimeHours * 2
+func timeInFormat(t time.Time) string {
+	loc, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		panic(err)
+	}
+	return t.In(loc).Format("15:04")
+}
+
+func calcRuntimeCost(futureRates []Rate, runtimeHours float64) (time.Time, time.Time, float64) {
+	runtimeSegments := int(math.Ceil(runtimeHours / 0.5))
 
 	lowestTime := futureRates[0].ValidFrom
 	lowestCost := float64(1000)
+	startCost := float64(1000)
 
 	for i := range futureRates {
 		if i+runtimeSegments > len(futureRates) {
@@ -63,16 +69,18 @@ func calcRuntimeCost(futureRates []Rate, runtimeHours int) (time.Time, time.Time
 		}
 		currentCostRate := float64(0)
 		for j := 0; j < runtimeSegments; j++ {
-			currentCostRate += futureRates[i+j].ValueIncVat
+			currentCostRate += futureRates[i+j].ValueIncVat / 2
 		}
 		if currentCostRate < lowestCost {
+			startCost = futureRates[i].ValueIncVat
 			lowestCost = currentCostRate
 			lowestTime = futureRates[i].ValidFrom
 		}
 	}
 
-	lowestEndTime := lowestTime.Add(time.Duration(runtimeHours) * time.Minute * 30 * 2)
+	lowestEndTime := lowestTime.Add(time.Duration(runtimeSegments) * time.Minute * 30)
 
+	fmt.Println(startCost)
 	return lowestTime, lowestEndTime, lowestCost
 }
 
@@ -95,9 +103,10 @@ func sortByDate(rates []Rate) {
 
 func filterToFutureOnly(rates []Rate) []Rate {
 	var filteredRates []Rate
+	now := time.Now()
 
 	for _, rate := range rates {
-		if rate.ValidFrom.After(time.Now()) {
+		if rate.ValidFrom.After(now) {
 			filteredRates = append(filteredRates, rate)
 		}
 	}
